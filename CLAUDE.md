@@ -2600,18 +2600,21 @@ Supabase sebagai backend, jsPDF untuk export PDF).
   link `eic7.github.io` (tidak ikut di-revert di sana) -- **KEDUA REPO
   SEKARANG SENGAJA BERBEDA ISI** (divergen dgn tujuan), bukan lagi cermin
   identik satu sama lain.
-- **🔴 ATURAN WAJIB mulai sekarang: JANGAN PERNAH push otomatis ke lebih
-  dari 1 remote tanpa tanya dulu ke user repo mana yang dituju** --
-  permintaan eksplisit user ("Tanyakan dulu sebelum push. Biar tidak
-  keduanya"). Konfigurasi remote SEKARANG (bukan lagi dual-push-otomatis):
-  `origin` = `Mahfudjtf/PM-UNIT-7` SAJA (fetch+push, default, ini yang
-  dipakai prosedur wajib "git fetch origin" di paling atas dokumen ini
-  seperti biasa). `eic7` = remote TERPISAH ke `EIC7/PM-UNIT-7`
-  (`git remote add eic7 https://github.com/EIC7/PM-UNIT-7.git`), HANYA
-  dipush secara EKSPLISIT (`git push eic7 main`) kalau user benar-benar
-  minta/konfirmasi repo itu jadi tujuan. **Default kalau tidak disebutkan
-  eksplisit REPO MANA = `origin` (Mahfudjtf) saja**, TIDAK PERNAH
-  asumsikan "eic7 juga" lagi walau sesi sebelumnya pernah begitu.
+- **🔴 ATURAN WAJIB mulai sekarang: TIDAK ADA DEFAULT sama sekali soal
+  repo tujuan push** -- permintaan eksplisit user ("tidak ada yang
+  default. intinya setiap mau push ditanyakan. mau push ke yang mana bisa
+  salah satu atau keduanya"). **SETIAP KALI mau push (sesudah commit siap,
+  sebelum `git push` dijalankan), WAJIB tanya dulu ke user: push ke
+  `origin` (Mahfudjtf) saja, `eic7` saja, atau KEDUANYA** -- untuk commit
+  INI juga, bukan cuma sekali di awal lalu dianggap berlaku seterusnya.
+  JANGAN PERNAH asumsikan salah satu (termasuk `origin`) sebagai default
+  diam-diam walau kelihatannya "jelas" dari konteks (mis. perubahan yang
+  cuma relevan ke 1 repo) -- tetap tanya dulu.
+  Konfigurasi remote saat ini: `origin` = `Mahfudjtf/PM-UNIT-7`
+  (fetch+push) -- dipakai jalur prosedur wajib "git fetch origin" di
+  paling atas dokumen ini SAAT MEMANG diputuskan push ke situ. `eic7` =
+  remote terpisah ke `EIC7/PM-UNIT-7`
+  (`git remote add eic7 https://github.com/EIC7/PM-UNIT-7.git`).
 - Karena kedua repo sekarang boleh berbeda isi, **`git fetch`/perbandingan
   divergensi WAJIB dicek per-remote sesuai tujuan push** -- kalau user
   minta push ke `eic7`, jalankan `git fetch eic7` dulu (bukan cuma
