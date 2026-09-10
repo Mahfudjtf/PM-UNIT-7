@@ -3505,3 +3505,28 @@ Supabase sebagai backend, jsPDF untuk export PDF).
   butuh test `dbSave()` end-to-end lagi di masa depan, WAJIB mock
   `window.supaFetchProgress` juga (bukan cuma `supaFetch`) -- 2 fungsi
   network terpisah di `shared.js`, gampang kelupaan salah satu.
+
+## `find-asset-detail.html`: popup detail dipersempit jadi 6 info saja (2026-09-10)
+
+- Permintaan eksplisit user (screenshot popup): info yang ditampilkan di
+  popup detail (`openDetail()`) SEHARUSNYA cuma **Asset, Asset
+  Description, Location, Location Description, P/ID Number, Status** --
+  sebelumnya grid-nya juga menampilkan Custodian, Maintenance Priority
+  Index (MPI), Serial Number, plus badge Level & Workgroup di header.
+- **Fix**: `order` array di `openDetail()` dipersempit dari `['location',
+  'locationDesc','custodian','mpi','serial','pid']` jadi `['location',
+  'locationDesc','pid']` -- Asset (title `#modalTagText`), Asset
+  Description (`#modalDesc`), dan Status (badge) TIDAK perlu diubah,
+  sudah tampil dari awal di luar grid. `modalBadges` dipersempit jadi
+  cuma `statusBadgeHtml(a.status)` (Level & Workgroup badge dihapus dari
+  popup). `levelBadgeHtml()` jadi dead code sesudah ini (cuma dipanggil
+  dari popup yang sekarang dihapus) -- dihapus total. `workgroupBadgeHtml()`
+  **TIDAK dihapus** -- tetap dipakai di kartu hasil pencarian (`.result-
+  badges`, bagian LAIN dari halaman ini, di luar scope perubahan ini).
+- **Data-nya SENDIRI tidak dihapus** dari `ASSETS`/`FIELD_LABELS` --
+  Custodian/MPI/Serial/Level cuma tidak dirender lagi di popup, kalau
+  nanti user minta ditambahkan balik tinggal masukkan lagi ke `order`.
+- Diverifikasi lewat headless Chrome (`asset-database.json` asli, bukan
+  mock) -- buka popup `7BF-LSH-500B`: title/desc/badge status benar, grid
+  PERSIS 3 baris (Location Code/Location Description/P per ID Number),
+  tidak ada Custodian/MPI/Serial/Level/Workgroup lagi.
