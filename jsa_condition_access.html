@@ -335,6 +335,10 @@ var jsaState = {
   additionalMeasures: ['']
 };
 
+// Lihat komentar panjang di jsa_report.html (deklarasi jsaDriveInfo yang
+// SAMA PERSIS) -- fix bug "link Drive hilang sesudah autosave" 2026-09-11.
+var jsaDriveInfo = { wordDriveUrl: '', wordDriveFileId: '' };
+
 // ── Item checklist Table 1 (Plant Process Hazard Identification + Risk
 //    detail) -- {row, labelCol, cbCol} adalah index PERSIS hasil pembacaan
 //    XML mentah jsa_template_condition_access.docx (Table 1 header versi
@@ -1008,13 +1012,17 @@ function dbCollectData(modul) {
       additionalMeasures: jsaState.additionalMeasures.map(function(s){return s || '';}).filter(function(s){return s.trim();}),
       checklist: jsaState.checklist,
       controlMeasures: jsaState.controlMeasures,
-      sections: jsaState.sections
+      sections: jsaState.sections,
+      wordDriveUrl: jsaDriveInfo.wordDriveUrl,
+      wordDriveFileId: jsaDriveInfo.wordDriveFileId
     }
   };
 }
 
 function applyRecordToForm(rec) {
   var d = rec.data || {};
+  jsaDriveInfo.wordDriveUrl = d.wordDriveUrl || '';
+  jsaDriveInfo.wordDriveFileId = d.wordDriveFileId || '';
   document.getElementById('jsaEquipTag').value = d.equipTag || '';
   document.getElementById('jsaWorkToBeDone').value = d.workToBeDone || '';
   document.getElementById('jsaWorkMethod').value = d.workMethod || '';
@@ -1114,6 +1122,8 @@ function jsaResetAll() {
   jsaState.others = [];
   jsaState.controlMeasures = {};
   jsaState.additionalMeasures = [''];
+  jsaDriveInfo.wordDriveUrl = '';
+  jsaDriveInfo.wordDriveFileId = '';
   jsaRenderSections();
   jsaRenderChecklist();
   jsaRenderControlMeasures();
@@ -1973,6 +1983,9 @@ function jsaUploadWordToDrive(blob, filename, downloadedLocally) {
         if (!row) throw new Error('Record tidak ditemukan setelah disimpan (id=' + id + ').');
         var oldFileId = row.data && row.data.wordDriveFileId;
         var merged = Object.assign({}, row.data || {}, { wordDriveUrl: result.fileUrl, wordDriveFileId: result.fileId });
+        // Lihat komentar lengkap "BUG KE-3"/jsaDriveInfo di jsa_report.html.
+        jsaDriveInfo.wordDriveUrl = result.fileUrl;
+        jsaDriveInfo.wordDriveFileId = result.fileId;
         // Lihat komentar lengkap "BUG KE-2" di jsa_report.html --
         // _pmPatchRecordWithRetry() bisa diam2 menyerah setelah 3x gagal
         // (didesain utk pemakaian lain yg punya retry terpisah), jadi

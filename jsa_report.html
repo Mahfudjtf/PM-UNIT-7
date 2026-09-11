@@ -348,6 +348,26 @@ var jsaState = {
   additionalMeasures: ['']
 };
 
+// 🔴 BUG BESAR (ditemukan 2026-09-11, laporan "link Preview in Drive
+// kadang hilang sesudah Simpan padahal Generate/Download selalu berhasil"):
+// dbCollectData() (di bawah) SEBELUMNYA tidak pernah menyertakan
+// wordDriveUrl/wordDriveFileId sama sekali -- field itu murni ditulis oleh
+// jsaUploadWordToDrive() lewat GET+merge+PATCH TERPISAH, bukan bagian dari
+// data form. Karena dbSave()/dbSaveSilent() (autosave server, jalan
+// otomatis tiap 60 detik kalau _raDirty true) mem-PATCH SELURUH kolom
+// `data` pakai hasil dbCollectData() apa adanya, autosave manapun yang
+// jalan SETELAH Simpan sukses+Drive ter-upload akan DIAM-DIAM MENIMPA
+// wordDriveUrl balik jadi kosong -- tanpa error apa pun, karena PATCH-nya
+// sendiri "berhasil" (cuma isinya yang tidak lagi punya field itu). Beda
+// dari tombol Download (jsaGenerateWord) yang biasanya jadi aksi TERAKHIR
+// (user tidak lanjut mengetik sesudahnya, autosave jarang sempat menimpa).
+// Fix: jsaDriveInfo jadi SATU-SATUNYA sumber kebenaran wordDriveUrl/
+// wordDriveFileId di sisi client, ikut disertakan ke SETIAP dbCollectData()
+// (lihat di bawah), diisi ulang dari record saat dibuka (applyRecordToForm)
+// DAN diupdate tiap kali jsaUploadWordToDrive() sukses -- supaya autosave
+// TIDAK PERNAH lagi menimpanya balik jadi kosong.
+var jsaDriveInfo = { wordDriveUrl: '', wordDriveFileId: '' };
+
 // ── Item checklist Table 1 (Plant Process Hazard Identification + Risk
 //    detail) -- {row, labelCol, cbCol} adalah index PERSIS hasil pembacaan
 //    XML mentah jsa_template.docx (lihat riwayat percakapan/CLAUDE.md kalau
@@ -1022,13 +1042,21 @@ function dbCollectData(modul) {
       additionalMeasures: jsaState.additionalMeasures.map(function(s){return s || '';}).filter(function(s){return s.trim();}),
       checklist: jsaState.checklist,
       controlMeasures: jsaState.controlMeasures,
-      sections: jsaState.sections
+      sections: jsaState.sections,
+      // Lihat komentar panjang di deklarasi jsaDriveInfo di atas -- WAJIB
+      // disertakan di SETIAP dbCollectData(), termasuk yang dipanggil
+      // autosave, supaya link Drive yang sudah ada TIDAK PERNAH tertimpa
+      // kosong oleh save berikutnya.
+      wordDriveUrl: jsaDriveInfo.wordDriveUrl,
+      wordDriveFileId: jsaDriveInfo.wordDriveFileId
     }
   };
 }
 
 function applyRecordToForm(rec) {
   var d = rec.data || {};
+  jsaDriveInfo.wordDriveUrl = d.wordDriveUrl || '';
+  jsaDriveInfo.wordDriveFileId = d.wordDriveFileId || '';
   document.getElementById('jsaEquipTag').value = d.equipTag || '';
   document.getElementById('jsaWorkToBeDone').value = d.workToBeDone || '';
   document.getElementById('jsaWorkMethod').value = d.workMethod || '';
@@ -1144,6 +1172,8 @@ function jsaResetAll() {
   jsaState.riskCategory = '';
   jsaState.controlMeasures = {};
   jsaState.additionalMeasures = [''];
+  jsaDriveInfo.wordDriveUrl = '';
+  jsaDriveInfo.wordDriveFileId = '';
   jsaRenderSections();
   jsaRenderChecklist();
   jsaRenderControlMeasures();
@@ -2104,6 +2134,13 @@ function jsaUploadWordToDrive(blob, filename, downloadedLocally) {
         if (!row) throw new Error('Record tidak ditemukan setelah disimpan (id=' + id + ').');
         var oldFileId = row.data && row.data.wordDriveFileId;
         var merged = Object.assign({}, row.data || {}, { wordDriveUrl: result.fileUrl, wordDriveFileId: result.fileId });
+        // 🔴 BUG KE-3 ditemukan 2026-09-11 (lihat komentar panjang di deklarasi
+        // jsaDriveInfo): update jsaDriveInfo DI SINI juga -- bukan cuma di
+        // database -- supaya dbCollectData() (dipanggil autosave/Simpan
+        // berikutnya) langsung tahu link Drive yang baru ini dan ikut
+        // menyertakannya, TIDAK menimpanya balik jadi kosong.
+        jsaDriveInfo.wordDriveUrl = result.fileUrl;
+        jsaDriveInfo.wordDriveFileId = result.fileId;
         // 🔴 BUG KE-2 ditemukan 2026-09-09: _pmPatchRecordWithRetry() (shared.js)
         // SENGAJA didesain utk pemakaian LAIN (raSendFinalPdfToFirebaseDashboard)
         // yang boleh "coba 3x lalu diam-diam menyerah" (ada mekanisme retry
