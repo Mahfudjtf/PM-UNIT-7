@@ -102,7 +102,7 @@ async function sendTelegramDirect(text) {
   }
 }
 
-async function checkSupabaseHealth() {
+async function checkSupabaseHealthOnce() {
   var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
   var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 10000) : null;
   try {
@@ -119,6 +119,33 @@ async function checkSupabaseHealth() {
     if (timer) clearTimeout(timer);
     return 'down';
   }
+}
+
+function sleep(ms) {
+  return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+// 2026-09-14: dulu 1x fetch gagal (termasuk timeout/network blip sesaat)
+// langsung disimpulkan "down" dan kirim alert Telegram -- terbukti lewat
+// laporan user: alert "Unhealthy" lalu "sudah kembali normal" dalam
+// hitungan menit, berulang beberapa kali sehari, padahal Supabase-nya
+// sendiri kemungkinan besar TIDAK pernah benar-benar down selama itu --
+// job ini jalan tiap 5 menit dengan timeout cuma 10 detik, jadi SATU KALI
+// SAJA jaringan GitHub Actions runner <-> Supabase lag sesaat/timeout
+// sudah cukup memicu alert palsu. Sekarang retry 3x dengan jeda 5 detik
+// SEBELUM menyimpulkan down -- alert cuma terkirim kalau gagal 3x
+// BERTURUT-TURUT dalam 1 run yang sama, jadi 1 hiccup sesaat (yang
+// biasanya pulih dalam beberapa detik) tidak lagi memicu alert. Kalau
+// memang down beneran, 3x percobaan ini cuma menambah ~10 detik total
+// sebelum alert terkirim -- tidak signifikan dibanding siklus poll 5 menit.
+async function checkSupabaseHealth() {
+  var lastResult = 'down';
+  for (var i = 0; i < 3; i++) {
+    lastResult = await checkSupabaseHealthOnce();
+    if (lastResult === 'ok') return 'ok';
+    if (i < 2) await sleep(5000);
+  }
+  return lastResult;
 }
 
 // State gabungan (health Supabase + reminder PAT expiry) disimpan SATU
