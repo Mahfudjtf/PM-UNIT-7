@@ -225,7 +225,19 @@ async function fetchRecentApprovals() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
-  if (!res.ok) throw new Error('Gagal query Firestore approvals: ' + res.status + ' ' + (await res.text()));
+  if (!res.ok) {
+    const bodyText = await res.text().catch(function () { return ''; });
+    const err = new Error('Gagal query Firestore approvals: ' + res.status + ' ' + bodyText);
+    // 2026-09-25: 429 RESOURCE_EXHAUSTED (kuota Firestore Spark plan habis
+    // buat hari itu) TERBUKTI bisa terjadi lagi meski limit sudah diturunkan
+    // ke 50 (lihat komentar di atas) -- ditandai flag khusus supaya main()
+    // bisa skip siklus ini dgn tenang (log + return, TIDAK exit(1)) alih-
+    // alih bikin seluruh job GitHub Actions merah tiap 5 menit sampai kuota
+    // reset besok. Kuota Firestore reset harian, jadi ini transient by
+    // design -- treat spt itu, jangan disamakan dgn bug beneran.
+    err.firestoreQuotaExceeded = (res.status === 429);
+    throw err;
+  }
   const rows = await res.json();
 
   const byChecksheetId = {};
@@ -285,10 +297,19 @@ async function main() {
     return;
   }
 
-  const [records, approvalsByChecksheetId] = await Promise.all([
-    fetchRecentRecords(),
-    fetchRecentApprovals()
-  ]);
+  let records, approvalsByChecksheetId;
+  try {
+    [records, approvalsByChecksheetId] = await Promise.all([
+      fetchRecentRecords(),
+      fetchRecentApprovals()
+    ]);
+  } catch (err) {
+    if (err.firestoreQuotaExceeded) {
+      console.warn('Firestore quota (429) habis -- lewati siklus poll ini, akan otomatis coba lagi run berikutnya. Tidak dianggap kegagalan job.');
+      return;
+    }
+    throw err;
+  }
 
   let candidates = 0;
   for (const r of records) {
