@@ -345,6 +345,7 @@ function _pmFetchDriveFileAsBase64(fileId, _attempt) {
       .then(function(result){
         var dataUrl = (result && result.success && result.imageBase64) ? result.imageBase64 : null;
         if (dataUrl) _photoCacheSet(fileId, dataUrl);
+        else console.warn('[Drive get gagal] fileId=' + fileId + ' percobaan=' + attempt + ' respon=', result && (result.error || result.message || result));
         return dataUrl;
       });
     // 25 detik per percobaan -- SEBELUMNYA tidak ada batas waktu sama
@@ -356,7 +357,7 @@ function _pmFetchDriveFileAsBase64(fileId, _attempt) {
     return Promise.race([
       fetchPromise,
       new Promise(function(resolve){ setTimeout(function(){ resolve(null); }, 25000); })
-    ]).catch(function(){ return null; }).then(function(dataUrl) {
+    ]).catch(function(err){ console.warn('[Drive get error] fileId=' + fileId + ' percobaan=' + attempt + ' ->', err && err.message ? err.message : err); return null; }).then(function(dataUrl) {
       if (dataUrl || attempt >= 3) return dataUrl;
       return new Promise(function(resolve){
         setTimeout(function(){ resolve(_pmFetchDriveFileAsBase64(fileId, attempt + 1)); }, attempt * 400);
@@ -421,6 +422,32 @@ function _pmRestoreBase64AfterLoad(obj) {
   return _pmRunPool(tasks, 8);
 }
 
+/* Jalur cadangan tanpa Apps Script: muat gambar langsung dari link Drive
+   (<img> tidak kena aturan CORS fetch), digambar ke canvas -> base64. Hanya
+   berhasil kalau file Drive-nya bisa diakses publik & CDN-nya mengizinkan
+   canvas; kalau tidak, return null (tidak melempar error). */
+function _pmLoadDriveViaImg(fileId) {
+  return new Promise(function(resolve) {
+    var done = false;
+    function fin(v){ if (!done) { done = true; resolve(v); } }
+    try {
+      var im = new Image();
+      im.crossOrigin = 'anonymous';
+      im.onload = function(){
+        try {
+          var c = document.createElement('canvas');
+          c.width = im.naturalWidth; c.height = im.naturalHeight;
+          c.getContext('2d').drawImage(im, 0, 0);
+          fin(c.toDataURL('image/jpeg', 0.92));
+        } catch (e) { console.warn('[Drive via img] canvas ditolak', fileId, e && e.message); fin(null); }
+      };
+      im.onerror = function(){ console.warn('[Drive via img] gagal muat', fileId); fin(null); };
+      setTimeout(function(){ fin(null); }, 15000);
+      im.src = gdriveFileIdToViewUrl(fileId);
+    } catch (e) { fin(null); }
+  });
+}
+
 /* Muat ulang foto yang gagal diambil dari Drive (dataUrl kosong / 'pmdrive:<id>').
    `imgs` = array flat object foto; `done` dipanggil setelah selesai dengan
    jumlah foto yang masih gagal. Aman dipanggil berulang. */
@@ -432,7 +459,14 @@ function pmRetryFailedDrivePhotos(imgs, done) {
     if (!fid && typeof img.dataUrl === 'string' && img.dataUrl.indexOf(PM_DRIVE_MARKER) === 0) fid = img.dataUrl.slice(PM_DRIVE_MARKER.length);
     if (!fid && img.driveUrl) { var m = /\/d\/([^/?]+)/.exec(img.driveUrl); if (m) fid = m[1]; }
     if (!fid) return;
-    tasks.push(function(){ return _pmFetchDriveFileAsBase64(fid).then(function(d){ if (d) { img.dataUrl = d; img.driveFileId = img.driveFileId || fid; } }); });
+    tasks.push(function(){
+      return _pmFetchDriveFileAsBase64(fid)
+        .then(function(d){ return d || _pmLoadDriveViaImg(fid); })
+        .then(function(d){
+          if (d) { img.dataUrl = d; img.driveFileId = img.driveFileId || fid; }
+          else console.warn('[Muat ulang foto] tetap gagal, fileId=' + fid);
+        });
+    });
   });
   _pmRunPool(tasks, 3).then(function(){
     var still = (imgs || []).filter(pmIsFailedDrivePhoto).length;
