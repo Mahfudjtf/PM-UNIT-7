@@ -231,12 +231,25 @@ function waitForPendingDriveUploads() {
    `rec.data = _pmStripBase64ForSave(rec.data)` (assign hasil return-nya),
    BUKAN `_pmStripBase64ForSave(rec.data);` polos (itu pola lama yang salah,
    sekarang jadi no-op efektif kalau dipakai lagi seperti itu). */
+var PM_DRIVE_MARKER = 'pmdrive:';
+function pmIsFailedDrivePhoto(img) { return !!(img && typeof img.dataUrl === 'string' && img.dataUrl.indexOf('data:') !== 0 && (img.dataUrl.indexOf(PM_DRIVE_MARKER) === 0 || img.driveFileId || img.driveUrl)); }
 function _pmStripBase64ForSave(obj) {
   if (Array.isArray(obj)) return obj.map(_pmStripBase64ForSave);
   if (!obj || typeof obj !== 'object') return obj;
   var out = {};
   Object.keys(obj).forEach(function(k){ out[k] = _pmStripBase64ForSave(obj[k]); });
   if (typeof out.dataUrl === 'string' && out.dataUrl.indexOf('data:') === 0 && out.driveUrl) {
+    out.dataUrl = '';
+  }
+  // 🛡️ Penanda "foto gagal dimuat dari Drive" (lihat _pmRestoreBase64AfterLoad).
+  // Modul yang menyalin foto dengan daftar field tetap (name/dataUrl/type/caption/...)
+  // membuang driveUrl/driveFileId, tapi SELALU membawa dataUrl -- jadi fileId
+  // diselundupkan lewat dataUrl 'pmdrive:<fileId>' dan dikembalikan jadi
+  // driveUrl+driveFileId di sini, supaya foto yang gagal dimuat TIDAK tersimpan
+  // kosong (hilang permanen) kalau user menekan Simpan.
+  if (typeof out.dataUrl === 'string' && out.dataUrl.indexOf(PM_DRIVE_MARKER) === 0) {
+    var _mfid = out.dataUrl.slice(PM_DRIVE_MARKER.length);
+    if (_mfid) { out.driveFileId = out.driveFileId || _mfid; out.driveUrl = out.driveUrl || gdriveFileIdToViewUrl(_mfid); }
     out.dataUrl = '';
   }
   // Fitur "Kembalikan ke Foto Asli" (2026-09-17) -- originalDataUrl (dataUrl foto
@@ -393,19 +406,38 @@ function _pmRestoreBase64AfterLoad(obj) {
       // terbukti CORS-nya lolos, sama seperti upload/delete foto.
       if (o.driveFileId) {
         var fid = o.driveFileId;
-        tasks.push(function(){ return _pmFetchDriveFileAsBase64(fid).then(function(dataUrl){ if (dataUrl) o.dataUrl = dataUrl; }); });
+        tasks.push(function(){ return _pmFetchDriveFileAsBase64(fid).then(function(dataUrl){ o.dataUrl = dataUrl || (PM_DRIVE_MARKER + fid); }); });
       } else {
         // Jaga-jaga: record lama yang cuma punya driveUrl tanpa driveFileId
         // tersimpan terpisah -- ekstrak fileId dari URL-nya
         // (https://lh3.googleusercontent.com/d/FILE_ID).
         var m = /\/d\/([^/?]+)/.exec(o.driveUrl);
-        if (m) { var mid = m[1]; tasks.push(function(){ return _pmFetchDriveFileAsBase64(mid).then(function(dataUrl){ if (dataUrl) o.dataUrl = dataUrl; }); }); }
+        if (m) { var mid = m[1]; tasks.push(function(){ return _pmFetchDriveFileAsBase64(mid).then(function(dataUrl){ o.dataUrl = dataUrl || (PM_DRIVE_MARKER + mid); }); }); }
       }
       return; // object foto -- gak perlu turun lebih dalam lagi
     }
     Object.keys(o).forEach(function(k){ walk(o[k]); });
   })(obj);
   return _pmRunPool(tasks, 8);
+}
+
+/* Muat ulang foto yang gagal diambil dari Drive (dataUrl kosong / 'pmdrive:<id>').
+   `imgs` = array flat object foto; `done` dipanggil setelah selesai dengan
+   jumlah foto yang masih gagal. Aman dipanggil berulang. */
+function pmRetryFailedDrivePhotos(imgs, done) {
+  var tasks = [];
+  (imgs || []).forEach(function(img) {
+    if (!pmIsFailedDrivePhoto(img)) return;
+    var fid = img.driveFileId;
+    if (!fid && typeof img.dataUrl === 'string' && img.dataUrl.indexOf(PM_DRIVE_MARKER) === 0) fid = img.dataUrl.slice(PM_DRIVE_MARKER.length);
+    if (!fid && img.driveUrl) { var m = /\/d\/([^/?]+)/.exec(img.driveUrl); if (m) fid = m[1]; }
+    if (!fid) return;
+    tasks.push(function(){ return _pmFetchDriveFileAsBase64(fid).then(function(d){ if (d) { img.dataUrl = d; img.driveFileId = img.driveFileId || fid; } }); });
+  });
+  _pmRunPool(tasks, 3).then(function(){
+    var still = (imgs || []).filter(pmIsFailedDrivePhoto).length;
+    if (typeof done === 'function') done(still);
+  });
 }
 
 /* Nama file yang dikirim ke Drive TIDAK BOLEH pakai nama asli dari device
