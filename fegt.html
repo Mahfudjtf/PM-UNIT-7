@@ -1046,7 +1046,7 @@ function applyImageEdits(){
                 cropImg.style.width = dw+'px'; cropImg.style.height = dh+'px';
                 cropImg.style.left = ((ww-dw)/2)+'px'; cropImg.style.top = ((wh-dh)/2)+'px';
                 if (cropModalState._mode === 'default') fitCropBoxToFullImage();
-                else if (cropModalState._ratioLocked) reshapeCropBoxToRatio();
+                else if (cropModalState._ratioLocked) { fitCropBoxToFullImage(); reshapeCropBoxToRatio(); } // rasio terkunci (mis. 1:1): mulai dari full gambar, lalu diperbesar maksimal ke rasio itu -- bukan 80% di tengah
                 cropStartHistoryTracking();
         cropUpdateRestoreOriginalButton();
         cropUpdateQueueProgressUI(); // Fitur U: tampilkan "Foto X dari Y" kalau lagi jalan antrean multi-crop
@@ -1394,7 +1394,7 @@ function imgOpenCropper(dataUrl, name, type, imgArr, side, modulePrefix, replace
         box.style.width = bw+'px'; box.style.height = bh+'px';
         box.style.left = ((ww-bw)/2)+'px'; box.style.top = ((wh-bh)/2)+'px';
         if (cropModalState._mode === 'default') fitCropBoxToFullImage();
-        else if (cropModalState._ratioLocked) reshapeCropBoxToRatio();
+        else if (cropModalState._ratioLocked) { fitCropBoxToFullImage(); reshapeCropBoxToRatio(); } // rasio terkunci (mis. 1:1): mulai dari full gambar, lalu diperbesar maksimal ke rasio itu -- bukan 80% di tengah
         cropStartHistoryTracking();
         cropUpdateRestoreOriginalButton();
         cropUpdateQueueProgressUI(); // Fitur U: tampilkan "Foto X dari Y" kalau lagi jalan antrean multi-crop
